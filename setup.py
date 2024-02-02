@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='pywebscrapr',
-    version='0.1.0',
+    version='{{VERSION_PLACEHOLDER}}',
     author='Infinitode Pty Ltd',
     author_email='infinitode.ltd@gmail.com',
     description='An open-source Python library for web scraping tasks.',
