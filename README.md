@@ -1,6 +1,6 @@
 # PyWebScrapr
 ![Python Version](https://img.shields.io/badge/python-3.12-blue.svg)
-![Code Size](https://img.shields.io/github/languages/code-size/infinitode/pywebscrapr)
+![Code Size](https://img.shields.io/github/languages/code-size/Infinitode/PyWebScrapr)
 ![Downloads](https://pepy.tech/badge/pywebscapr)
 ![License Compliance](https://img.shields.io/badge/license-compliance-brightgreen.svg)
 ![PyPI Version](https://img.shields.io/pypi/v/pywebscrapr)
