@@ -4,7 +4,7 @@ from pywebscrapr import scrape_images, scrape_text
 class TestPyWebScraper(unittest.TestCase):
     def test_scrape_images(self):
         # Test scraping images using links from a file
-        scrape_images(links_file='test_links.txt', save_folder='downloaded_images')
+        scrape_images(links_file='test_links.txt', save_folder='downloaded_images', min_height=1280)
 
     def test_scrape_text(self):
         # Test scraping text using links directly

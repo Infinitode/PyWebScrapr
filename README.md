@@ -7,6 +7,12 @@
 
 An open-source Python library for web scraping tasks. Includes support for both text and image scraping.
 
+## Changes in 0.1.1
+
+Changes in version 0.1.1:
+- `min` and `max` width and height parameters can now be specified when working with image scraping, allowing you to quickly exclude smaller resolution images, or images that are extremely large and take up too much space.
+- PyWebScrapr now uses BeautifulSoup4's `SoupStrainer`, making extracting content from webpages much faster.
+
 ## Installation
 
 You can install PyWebScrapr using pip:
@@ -24,7 +30,8 @@ PyWebScrapr supports the following Python versions:
 - Python 3.8
 - Python 3.9
 - Python 3.10
-- Python 3.11/Later (Preferred)
+- Python 3.11
+- Python 3.12/Later (Preferred)
 
 Please ensure that you have one of these Python versions installed before using PyWebScrapr. PyWebScrapr may not work as expected on lower versions of Python than the supported.
 
@@ -33,7 +40,7 @@ Please ensure that you have one of these Python versions installed before using 
 - **Text Scraping**: Extract textual content from specified URLs.
 - **Image Scraping**: Download images from specified URLs.
 
-<sub>*for a full list check out the PyWebScrapr Documentation.</sub>
+<sub>*for a full list check out the [PyWebScrapr official documentation](https://infinitode-docs.gitbook.io/documentation/package-documentation/pywebscrapr-package-documentation).</sub>
 
 ## Usage
 

@@ -12,7 +12,8 @@ setup(
     packages=find_packages(),
     install_requires=[
         'requests',
-        'beautifulsoup4',
+        'bs4',
+        'pillow'
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',
