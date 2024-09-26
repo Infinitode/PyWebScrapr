@@ -7,9 +7,9 @@
 
 An open-source Python library for web scraping tasks. Includes support for both text and image scraping.
 
-## Changes in 0.1.1
+## Changes in 0.1.2
 
-Changes in version 0.1.1:
+Changes in version 0.1.2:
 - `min` and `max` width and height parameters can now be specified when working with image scraping, allowing you to quickly exclude smaller resolution images, or images that are extremely large and take up too much space.
 - PyWebScrapr now uses BeautifulSoup4's `SoupStrainer`, making extracting content from webpages much faster.
 
