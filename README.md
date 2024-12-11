@@ -7,6 +7,9 @@
 
 An open-source Python library for web scraping tasks. Includes support for both text and image scraping.
 
+## Changes in 0.1.3:
+- Added support for handling of different types of images on websites. Also now checks for invalid images, with added error handling.
+
 ## Changes in 0.1.2
 
 Changes in version 0.1.2:

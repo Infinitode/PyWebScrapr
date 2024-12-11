@@ -16,11 +16,35 @@ def _download_image(url, save_path):
     with open(save_path, 'wb') as file:
         file.write(response.content)
 
-def _check_image_dimensions(url, min_width=None, min_height=None, max_width=None, max_height=None):
-    """Helper function to check image dimensions."""
+def _check_image_dimensions(img_source, min_width=None, min_height=None, max_width=None, max_height=None):
+    """Helper function to check image dimensions, handling both URL and BytesIO sources."""
     try:
-        response = requests.get(url)
-        img = Image.open(BytesIO(response.content))
+        if isinstance(img_source, str):  # If img_source is a URL
+            response = requests.get(img_source, stream=True)
+            response.raise_for_status()
+
+            # Check if the content type is an image
+            if 'image' not in response.headers.get('Content-Type', ''):
+                print(f"Skipped non-image content: {img_source}")
+                return False
+
+            # Check for minimal content length to avoid error pages
+            content_length = response.headers.get('Content-Length')
+            if content_length and int(content_length) < 500:  # arbitrary small size for images
+                print(f"Skipped due to small content size: {img_source}")
+                return False
+
+            img_data = BytesIO(response.content)
+            img = Image.open(img_data)
+        elif isinstance(img_source, BytesIO):  # Already a BytesIO object
+            img = Image.open(img_source)
+        else:
+            raise ValueError("img_source must be a URL (str) or BytesIO object.")
+
+        img.verify()  # Verify it is indeed an image
+
+        # Re-open after verification as img.verify() closes the file
+        img = Image.open(img_data if isinstance(img_source, str) else img_source)
         width, height = img.size
 
         # Check against provided constraints
@@ -30,7 +54,7 @@ def _check_image_dimensions(url, min_width=None, min_height=None, max_width=None
             return False
 
         return True
-    except Exception as e:
+    except (Image.UnidentifiedImageError, requests.exceptions.RequestException, ValueError) as e:
         print(f"Error checking image dimensions: {e}")
         return False
 
