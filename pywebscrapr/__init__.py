@@ -112,27 +112,62 @@ def scrape_images(links_file=None, links_array=None, save_folder='images', min_w
                 else:
                     print(f"Ignored due to size constraints: {img_url}")
 
-def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv_output_file=None, remove_extra_whitespace=True):
+import re
+
+def normalize_text(text):
+    """Normalize the text by converting to lowercase, removing extra whitespace and irrelevant patterns."""
+    text = text.lower()  # Convert to lowercase
+    text = re.sub(r'\s+', ' ', text)  # Remove extra whitespace
+    text = re.sub(r'\b(the|and|for|in|with|to|a|an|of|on|at|by)\b', '', text)  # Remove common stopwords (optional)
+    text = re.sub(r'\W+', ' ', text)  # Remove non-word characters
+    return text.strip()
+
+def is_similar_regex(new_text, seen_texts, threshold=0.8):
+    """Check if the `new_text` is similar to any text in `seen_texts` based on regex similarity."""
+    normalized_new_text = normalize_text(new_text)
+
+    for seen_text in seen_texts:
+        normalized_seen_text = normalize_text(seen_text)
+
+        # Split texts into words and calculate the match ratio
+        new_text_words = set(normalized_new_text.split())
+        seen_text_words = set(normalized_seen_text.split())
+
+        # Skip empty text comparisons
+        if len(seen_text_words) == 0:
+            continue
+
+        # Calculate similarity ratio
+        match_ratio = len(new_text_words & seen_text_words) / len(seen_text_words)
+
+        # If match ratio exceeds threshold, consider as a duplicate
+        if match_ratio >= threshold:
+            return True
+    return False
+
+def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv_output_file=None,
+                remove_extra_whitespace=True, remove_duplicates=True, similarity_threshold=0.8,
+                elements_to_scrape='text'):
     """
-    Scrape textual content from the given links and save to specified output file(s).
+    Scrape content from the given links and save to specified output file(s).
 
     Parameters:
     - links_file (str): Path to a file containing links, with each link on a new line.
-    - links_array (list): List of links to scrape text from.
-    - output_file (str): File to save the scraped text.
-    - csv_output_file (str): File to save the URL and text information in CSV format.
+    - links_array (list): List of links to scrape content from.
+    - output_file (str): File to save the scraped content.
+    - csv_output_file (str): File to save the URL and scraped information in CSV format.
     - remove_extra_whitespace (bool): If True, remove extra whitespace and empty lines from the output.
+    - remove_duplicates (bool): If True, remove duplicate or highly similar paragraphs.
+    - similarity_threshold (float): Similarity percentage (0-1) above which paragraphs are considered duplicates.
+    - elements_to_scrape (str): Type of content to scrape. Options are:
+        'text' (default) - Scrape visible textual content.
+        'content' - Scrape the `content` attribute of meta tags.
+        'unseen' - Scrape hidden or non-visible elements (e.g., meta tags, script data).
+        'links' - Scrape `href` or `src` attributes of anchor and media elements.
 
     Example:
     ```python
-    from pywebscrapr import scrape_text
-
-    # Using links from a file and saving text to output.txt
-    scrape_text(links_file='links.txt', output_file='output.txt')
-
-    # Using links directly and saving text to output.txt and csv_output.csv with extra whitespace removal
-    links = ['https://example.com/page1', 'https://example.com/page2']
-    scrape_text(links_array=links, output_file='output.txt', csv_output_file='csv_output.csv', remove_extra_whitespace=True)
+    scrape_text(links_array=['https://example.com'], similarity_threshold=0.9)
     ```
     """
     links = []
@@ -144,36 +179,49 @@ def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv
     else:
         raise ValueError("Either 'links_file' or 'links_array' must be provided.")
 
-    all_text = ""
+    all_content = []
     csv_data = []
-    strainer = SoupStrainer(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'code', 'span', 'nav', 'footer', 'header', 'table', 'td', 'ul', 'ol', 'div'])
+    seen_texts = []  # Store unique paragraphs
+    strainer = SoupStrainer(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'code', 'span', 'nav',
+                             'footer', 'header', 'table', 'td', 'ul', 'ol', 'div', 'meta'])
 
     for link in links:
         response = requests.get(link)
         soup = BeautifulSoup(response.text, 'html.parser', parse_only=strainer)
 
         for element in soup.find_all(lambda tag: tag.name not in ['script', 'style']):
-            if remove_extra_whitespace:
-                text = element.get_text(strip=True)  # Remove extra whitespace
-                if text:  # Skip empty lines
-                    all_text += text + "\n"
+            if elements_to_scrape == 'text':
+                content = element.get_text(strip=remove_extra_whitespace) if remove_extra_whitespace else element.get_text()
+            elif elements_to_scrape == 'content' and element.has_attr('content'):
+                content = element['content']
+            elif elements_to_scrape == 'unseen' and element.name in ['meta', 'script']:
+                content = element.get('content', element.get_text(strip=True))
+            elif elements_to_scrape == 'links' and element.name in ['a', 'img', 'video']:
+                content = element.get('href') or element.get('src')
             else:
-                text = element.get_text()
-                all_text += text + "\n"
-            if csv_output_file:
-                csv_data.append({'URL': link, 'Text': text})
+                continue  # Skip unsupported elements for the chosen scrape type
 
-    # Save text to output file
+            if content:
+                if remove_duplicates:
+                    # Check if content is similar to existing unique paragraphs using regex-based similarity
+                    if not is_similar_regex(content, seen_texts, similarity_threshold):
+                        seen_texts.append(content)
+                        all_content.append(content)
+                        if csv_output_file:
+                            csv_data.append({'URL': link, 'Content': content})
+                else:
+                    all_content.append(content)
+                    if csv_output_file:
+                        csv_data.append({'URL': link, 'Content': content})
+
+    # Save content to output file
     with open(output_file, 'w', encoding='utf-8') as text_file:
-        if remove_extra_whitespace:
-            text_file.write(all_text.rstrip())  # Remove trailing whitespace
-        else:
-            text_file.write(all_text)
+        text_file.write("\n".join(all_content).rstrip())
 
     # Save CSV data to CSV file
     if csv_output_file:
         with open(csv_output_file, 'w', newline='', encoding='utf-8') as csv_file:
-            fieldnames = ['URL', 'Text']
+            fieldnames = ['URL', 'Content']
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(csv_data)

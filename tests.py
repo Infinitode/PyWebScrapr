@@ -8,8 +8,8 @@ class TestPyWebScraper(unittest.TestCase):
 
     def test_scrape_text(self):
         # Test scraping text using links directly
-        links = ['https://google.com', 'https://github.com']
-        scrape_text(links_array=links, output_file='output.txt', csv_output_file='csv_output.csv', remove_extra_whitespace=True)
+        links = ['https://blog.google/technology/google-deepmind/google-gemini-ai-update-december-2024/']
+        scrape_text(links_array=links, output_file='output.txt', csv_output_file='csv_output.csv', remove_extra_whitespace=True, remove_duplicates=True, elements_to_scrape='text', similarity_threshold=0.8)
 
 if __name__ == '__main__':
     unittest.main()
