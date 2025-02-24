@@ -1,11 +1,18 @@
 # PyWebScrapr
-![Python Version](https://img.shields.io/badge/python-3.12-blue.svg)
+![Python Version](https://img.shields.io/badge/python-3.13-blue.svg)
 [![Code Size](https://img.shields.io/github/languages/code-size/infinitode/pywebscrapr)](https://github.com/infinitode/pywebscrapr)
 ![Downloads](https://pepy.tech/badge/pywebscrapr)
 ![License Compliance](https://img.shields.io/badge/license-compliance-brightgreen.svg)
 ![PyPI Version](https://img.shields.io/pypi/v/pywebscrapr)
 
 An open-source Python library for web scraping tasks. Includes support for both text and image scraping.
+
+## Changes in 0.1.5:
+- Added new params to both `scrape_images` and `scrape_text` to allow for following child links, and setting a maximum allowed followed child links.
+- Added a `json` export format for text scraping, with improvements to exporting.
+
+> [!TIP]
+> We recommend disabling `remove_duplicates` on large sites, to allow for faster text scraping (this can improve speed by 4x). It also may not work well with `follow_child_links` enabled, as it may remove similar content from scraped child links.
 
 ## Changes in 0.1.4:
 - Added new parameters to `scrape_text` to allow automatic removal of duplicates or similar text, and another to specify the type of textual content to scrape (`text`, `content`, `unseen`, `links`).

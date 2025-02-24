@@ -1,6 +1,8 @@
 import os
 import csv
+import json
 import requests
+import re
 from bs4 import BeautifulSoup, SoupStrainer
 from urllib.parse import urlparse, urljoin
 from PIL import Image
@@ -58,7 +60,7 @@ def _check_image_dimensions(img_source, min_width=None, min_height=None, max_wid
         print(f"Error checking image dimensions: {e}")
         return False
 
-def scrape_images(links_file=None, links_array=None, save_folder='images', min_width=None, min_height=None, max_width=None, max_height=None):
+def scrape_images(links_file=None, links_array=None, save_folder='images', min_width=None, min_height=None, max_width=None, max_height=None, follow_child_links=False, max_links_to_follow=None):
     """
     Scrape image content from the given links and save to specified output folder.
 
@@ -70,15 +72,27 @@ def scrape_images(links_file=None, links_array=None, save_folder='images', min_w
     - min_height (int): Minimum height of images to include (optional).
     - max_width (int): Maximum width of images to include (optional).
     - max_height (int): Maximum height of images to include (optional).
+    - follow_child_links (bool): If True, follow and scrape images from child links found on the page.
+    - max_links_to_follow (int): Maximum number of links to follow when scraping child links.
 
     Example:
     ```python
     from pywebscrapr import scrape_images
 
     # Using links from a file and saving images to output_images folder.
-    scrape_images(links_file='links.txt', save_folder='output_images', min_width=100, min_height=100)
+    scrape_images(links_file='links.txt', save_folder='output_images', min_width=100, min_height=100, follow_child_links=True, max_links_to_follow=10)
     ```
     """
+    def get_links_from_page(url):
+        """Helper function to get all links from a page."""
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        return [urljoin(url, a['href']) for a in soup.find_all('a', href=True)]
+
+    def is_same_domain(url1, url2):
+        """Helper function to check if two URLs belong to the same domain."""
+        return urlparse(url1).netloc == urlparse(url2).netloc
+
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
 
@@ -91,9 +105,18 @@ def scrape_images(links_file=None, links_array=None, save_folder='images', min_w
     else:
         raise ValueError("Either 'links_file' or 'links_array' must be provided.")
 
+    visited_links = set()  # Track visited links to avoid loops
     strainer = SoupStrainer('img')
+    links_followed = 0  # Track the number of links followed
 
-    for link in links:
+    def scrape_page(link):
+        """Helper function to scrape images from a single page."""
+        nonlocal links_followed
+        if link in visited_links or (max_links_to_follow and links_followed >= max_links_to_follow):
+            return
+        visited_links.add(link)
+        links_followed += 1
+
         response = requests.get(link)
         soup = BeautifulSoup(response.text, 'html.parser', parse_only=strainer)
 
@@ -112,7 +135,14 @@ def scrape_images(links_file=None, links_array=None, save_folder='images', min_w
                 else:
                     print(f"Ignored due to size constraints: {img_url}")
 
-import re
+        if follow_child_links:
+            child_links = get_links_from_page(link)
+            for child_link in child_links:
+                if is_same_domain(link, child_link):
+                    scrape_page(child_link)
+
+    for link in links:
+        scrape_page(link)
 
 def normalize_text(text):
     """Normalize the text by converting to lowercase, removing extra whitespace and irrelevant patterns."""
@@ -145,9 +175,9 @@ def is_similar_regex(new_text, seen_texts, threshold=0.8):
             return True
     return False
 
-def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv_output_file=None,
-                remove_extra_whitespace=True, remove_duplicates=True, similarity_threshold=0.8,
-                elements_to_scrape='text'):
+def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv_output_file=None, json_output_file=None,
+                remove_extra_whitespace=True, remove_duplicates=False, similarity_threshold=0.8,
+                elements_to_scrape='text', follow_child_links=False, max_links_to_follow=None):
     """
     Scrape content from the given links and save to specified output file(s).
 
@@ -156,20 +186,33 @@ def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv
     - links_array (list): List of links to scrape content from.
     - output_file (str): File to save the scraped content.
     - csv_output_file (str): File to save the URL and scraped information in CSV format.
+    - json_output_file (str): File to save the URL and scraped information in JSON format.
     - remove_extra_whitespace (bool): If True, remove extra whitespace and empty lines from the output.
     - remove_duplicates (bool): If True, remove duplicate or highly similar paragraphs.
     - similarity_threshold (float): Similarity percentage (0-1) above which paragraphs are considered duplicates.
     - elements_to_scrape (str): Type of content to scrape. Options are:
         'text' (default) - Scrape visible textual content.
-        'content' - Scrape the `content` attribute of meta tags.
+        'content' - Scrape the [content](http://_vscodecontentref_/3) attribute of meta tags.
         'unseen' - Scrape hidden or non-visible elements (e.g., meta tags, script data).
-        'links' - Scrape `href` or `src` attributes of anchor and media elements.
+        'links' - Scrape [href](http://_vscodecontentref_/4) or `src` attributes of anchor and media elements.
+    - follow_child_links (bool): If True, follow and scrape content from child links found on the page.
+    - max_links_to_follow (int): Maximum number of links to follow when scraping child links.
 
     Example:
     ```python
-    scrape_text(links_array=['https://example.com'], similarity_threshold=0.9)
+    scrape_text(links_array=['https://example.com'], similarity_threshold=0.9, follow_child_links=True, max_links_to_follow=10)
     ```
     """
+    def get_links_from_page(url):
+        """Helper function to get all links from a page."""
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        return [urljoin(url, a['href']) for a in soup.find_all('a', href=True)]
+
+    def is_same_domain(url1, url2):
+        """Helper function to check if two URLs belong to the same domain."""
+        return urlparse(url1).netloc == urlparse(url2).netloc
+
     links = []
     if links_file:
         with open(links_file, 'r') as file:
@@ -181,13 +224,25 @@ def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv
 
     all_content = []
     csv_data = []
+    json_data = []
     seen_texts = []  # Store unique paragraphs
+    visited_links = set()  # Track visited links to avoid loops
     strainer = SoupStrainer(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'code', 'span', 'nav',
                              'footer', 'header', 'table', 'td', 'ul', 'ol', 'div', 'meta'])
+    links_followed = 0  # Track the number of links followed
 
-    for link in links:
+    def scrape_page(link):
+        """Helper function to scrape content from a single page."""
+        nonlocal links_followed
+        if link in visited_links or (max_links_to_follow and links_followed >= max_links_to_follow):
+            return
+        visited_links.add(link)
+        links_followed += 1
+
         response = requests.get(link)
         soup = BeautifulSoup(response.text, 'html.parser', parse_only=strainer)
+
+        page_content = []
 
         for element in soup.find_all(lambda tag: tag.name not in ['script', 'style']):
             if elements_to_scrape == 'text':
@@ -206,17 +261,28 @@ def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv
                     # Check if content is similar to existing unique paragraphs using regex-based similarity
                     if not is_similar_regex(content, seen_texts, similarity_threshold):
                         seen_texts.append(content)
-                        all_content.append(content)
-                        if csv_output_file:
-                            csv_data.append({'URL': link, 'Content': content})
+                        page_content.append(content)
                 else:
-                    all_content.append(content)
-                    if csv_output_file:
-                        csv_data.append({'URL': link, 'Content': content})
+                    page_content.append(content)
+
+        if page_content:
+            all_content.append("\n".join(page_content))
+            if csv_output_file or json_output_file:
+                csv_data.append({'URL': link, 'Content': "\n".join(page_content)})
+                json_data.append({'URL': link, 'Content': "\n".join(page_content)})
+
+        if follow_child_links:
+            child_links = get_links_from_page(link)
+            for child_link in child_links:
+                if is_same_domain(link, child_link):
+                    scrape_page(child_link)
+
+    for link in links:
+        scrape_page(link)
 
     # Save content to output file
     with open(output_file, 'w', encoding='utf-8') as text_file:
-        text_file.write("\n".join(all_content).rstrip())
+        text_file.write("\n\n".join(all_content).rstrip())
 
     # Save CSV data to CSV file
     if csv_output_file:
@@ -225,3 +291,8 @@ def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(csv_data)
+
+    # Save JSON data to JSON file
+    if json_output_file:
+        with open(json_output_file, 'w', encoding='utf-8') as json_file:
+            json.dump(json_data, json_file, ensure_ascii=False, indent=4)
