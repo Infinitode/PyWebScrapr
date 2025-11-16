@@ -3,6 +3,9 @@ import csv
 import json
 import requests
 import re
+import time
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup, SoupStrainer
 from urllib.parse import urlparse, urljoin
 from PIL import Image
@@ -60,7 +63,7 @@ def _check_image_dimensions(img_source, min_width=None, min_height=None, max_wid
         print(f"Error checking image dimensions: {e}")
         return False
 
-def scrape_images(links_file=None, links_array=None, save_folder='images', min_width=None, min_height=None, max_width=None, max_height=None, follow_child_links=False, max_links_to_follow=None):
+def scrape_images(links_file=None, links_array=None, save_folder='images', min_width=None, min_height=None, max_width=None, max_height=None, follow_child_links=False, max_links_to_follow=None, print_progress=False, rate_limit=0, max_workers=5):
     """
     Scrape image content from the given links and save to specified output folder.
 
@@ -74,6 +77,9 @@ def scrape_images(links_file=None, links_array=None, save_folder='images', min_w
     - max_height (int): Maximum height of images to include (optional).
     - follow_child_links (bool): If True, follow and scrape images from child links found on the page.
     - max_links_to_follow (int): Maximum number of links to follow when scraping child links.
+    - print_progress (bool): If True, print progress updates to the console.
+    - rate_limit (int): Seconds to wait between requests.
+    - max_workers (int): Maximum number of threads to use.
 
     Example:
     ```python
@@ -108,15 +114,19 @@ def scrape_images(links_file=None, links_array=None, save_folder='images', min_w
     visited_links = set()  # Track visited links to avoid loops
     strainer = SoupStrainer('img')
     links_followed = 0  # Track the number of links followed
+    lock = Lock()
 
     def scrape_page(link):
         """Helper function to scrape images from a single page."""
         nonlocal links_followed
-        if link in visited_links or (max_links_to_follow and links_followed >= max_links_to_follow):
-            return
-        visited_links.add(link)
-        links_followed += 1
+        with lock:
+            if link in visited_links or (max_links_to_follow and links_followed >= max_links_to_follow):
+                return link, []
+            visited_links.add(link)
+            links_followed += 1
 
+        if rate_limit > 0:
+            time.sleep(rate_limit)
         response = requests.get(link)
         soup = BeautifulSoup(response.text, 'html.parser', parse_only=strainer)
 
@@ -135,14 +145,31 @@ def scrape_images(links_file=None, links_array=None, save_folder='images', min_w
                 else:
                     print(f"Ignored due to size constraints: {img_url}")
 
+        child_links_to_scrape = []
         if follow_child_links:
             child_links = get_links_from_page(link)
             for child_link in child_links:
                 if is_same_domain(link, child_link):
-                    scrape_page(child_link)
+                    child_links_to_scrape.append(child_link)
+        return link, child_links_to_scrape
 
-    for link in links:
-        scrape_page(link)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(scrape_page, link): link for link in links}
+        scraped_count = 0
+        while futures:
+            for future in as_completed(list(futures)):
+                link, child_links = future.result()
+                scraped_count += 1
+                if print_progress:
+                    print(f"Scraped {scraped_count} pages: {link}")
+
+                del futures[future]
+
+                if child_links:
+                    for child_link in child_links:
+                        if child_link not in visited_links:
+                            futures[executor.submit(scrape_page, child_link)] = child_link
+
 
 def normalize_text(text):
     """Normalize the text by converting to lowercase, removing extra whitespace and irrelevant patterns."""
@@ -177,7 +204,7 @@ def is_similar_regex(new_text, seen_texts, threshold=0.8):
 
 def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv_output_file=None, json_output_file=None,
                 remove_extra_whitespace=True, remove_duplicates=False, similarity_threshold=0.8,
-                elements_to_scrape='text', follow_child_links=False, max_links_to_follow=None):
+                elements_to_scrape='text', follow_child_links=False, max_links_to_follow=None, print_progress=False, rate_limit=0, max_workers=5):
     """
     Scrape content from the given links and save to specified output file(s).
 
@@ -197,6 +224,9 @@ def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv
         'links' - Scrape [href](http://_vscodecontentref_/4) or `src` attributes of anchor and media elements.
     - follow_child_links (bool): If True, follow and scrape content from child links found on the page.
     - max_links_to_follow (int): Maximum number of links to follow when scraping child links.
+    - print_progress (bool): If True, print progress updates to the console.
+    - rate_limit (int): Seconds to wait between requests.
+    - max_workers (int): Maximum number of threads to use.
 
     Example:
     ```python
@@ -230,15 +260,19 @@ def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv
     strainer = SoupStrainer(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'code', 'span', 'nav',
                              'footer', 'header', 'table', 'td', 'ul', 'ol', 'div', 'meta'])
     links_followed = 0  # Track the number of links followed
+    lock = Lock()
 
     def scrape_page(link):
         """Helper function to scrape content from a single page."""
         nonlocal links_followed
-        if link in visited_links or (max_links_to_follow and links_followed >= max_links_to_follow):
-            return
-        visited_links.add(link)
-        links_followed += 1
+        with lock:
+            if link in visited_links or (max_links_to_follow and links_followed >= max_links_to_follow):
+                return link, []
+            visited_links.add(link)
+            links_followed += 1
 
+        if rate_limit > 0:
+            time.sleep(rate_limit)
         response = requests.get(link)
         soup = BeautifulSoup(response.text, 'html.parser', parse_only=strainer)
 
@@ -266,19 +300,36 @@ def scrape_text(links_file=None, links_array=None, output_file='output.txt', csv
                     page_content.append(content)
 
         if page_content:
-            all_content.append("\n".join(page_content))
-            if csv_output_file or json_output_file:
-                csv_data.append({'URL': link, 'Content': "\n".join(page_content)})
-                json_data.append({'URL': link, 'Content': "\n".join(page_content)})
+            with lock:
+                all_content.append("\n".join(page_content))
+                if csv_output_file or json_output_file:
+                    csv_data.append({'URL': link, 'Content': "\n".join(page_content)})
+                    json_data.append({'URL': link, 'Content': "\n".join(page_content)})
 
+        child_links_to_scrape = []
         if follow_child_links:
             child_links = get_links_from_page(link)
             for child_link in child_links:
                 if is_same_domain(link, child_link):
-                    scrape_page(child_link)
+                    child_links_to_scrape.append(child_link)
+        return link, child_links_to_scrape
 
-    for link in links:
-        scrape_page(link)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(scrape_page, link): link for link in links}
+        scraped_count = 0
+        while futures:
+            for future in as_completed(list(futures)):
+                link, child_links = future.result()
+                scraped_count += 1
+                if print_progress:
+                    print(f"Scraped {scraped_count} pages: {link}")
+
+                del futures[future]
+
+                if child_links:
+                    for child_link in child_links:
+                        if child_link not in visited_links:
+                            futures[executor.submit(scrape_page, child_link)] = child_link
 
     # Save content to output file
     with open(output_file, 'w', encoding='utf-8') as text_file:

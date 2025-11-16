@@ -7,6 +7,12 @@
 
 An open-source Python library for web scraping tasks. Includes support for both text and image scraping.
 
+## Changes in 0.1.6:
+- Added progress indicators to both `scrape_images` and `scrape_text` to provide real-time feedback on scraping progress.
+- Implemented multithreading to improve performance by scraping multiple pages concurrently.
+- Added a `rate_limit` parameter to both scraping functions to control the request frequency and prevent server overload.
+- Refactored the concurrency model to ensure that child links are also scraped concurrently.
+
 ## Changes in 0.1.5:
 - Added new params to both `scrape_images` and `scrape_text` to allow for following child links, and setting a maximum allowed followed child links.
 - Added a `json` export format for text scraping, with improvements to exporting.
