@@ -179,16 +179,28 @@ def normalize_text(text):
     text = re.sub(r'\W+', ' ', text)  # Remove non-word characters
     return text.strip()
 
+from functools import lru_cache
+
+@lru_cache(maxsize=10000)
+def _cached_normalize_words(text):
+    """Helper to convert text string into normalized word frozenset with caching."""
+    return frozenset(normalize_text(text).split())
+
+def _get_normalized_words(text):
+    """Helper to convert text into normalized word frozenset, caching string results to avoid re-normalization overhead."""
+    if isinstance(text, (set, frozenset)):
+        return text
+    return _cached_normalize_words(text)
+
 def is_similar_regex(new_text, seen_texts, threshold=0.8):
-    """Check if the `new_text` is similar to any text in `seen_texts` based on regex similarity."""
-    normalized_new_text = normalize_text(new_text)
+    """
+    Check if the `new_text` is similar to any text in `seen_texts` based on regex similarity.
+    Optimized using LRU caching to avoid redundant text normalization and splitting on repeated comparisons.
+    """
+    new_text_words = _get_normalized_words(new_text)
 
-    for seen_text in seen_texts:
-        normalized_seen_text = normalize_text(seen_text)
-
-        # Split texts into words and calculate the match ratio
-        new_text_words = set(normalized_new_text.split())
-        seen_text_words = set(normalized_seen_text.split())
+    for seen_item in seen_texts:
+        seen_text_words = _get_normalized_words(seen_item)
 
         # Skip empty text comparisons
         if len(seen_text_words) == 0:
