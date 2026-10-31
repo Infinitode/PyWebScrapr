@@ -1,34 +1,64 @@
-name: Publish Python 🐍 distributions 📦 to PyPI
+name: Test and publish to PyPI
 
 on:
   push:
-    tags:
-       - '*'
+    branches: [main]
+    tags: ['*']
+  pull_request:
+
+# Least privilege by default. Jobs that need more say so explicitly.
+permissions:
+  contents: read
 
 jobs:
-  build-n-publish:
-    name: Build and publish Python 🐍 distributions 📦 to PyPI
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.12', '3.13']
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run tests (offline)
+        run: python -m unittest -v tests
+
+  build-and-publish:
+    name: Build and publish to PyPI
+    needs: test
+    # Only tag pushes publish. Pull requests and branch pushes stop after the tests.
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: '3.12'
-    - name: Install pypa/setuptools
-      run: >-
-        python -m
-        pip install setuptools wheel
-    - name: Extract tag name
-      id: tag
-      run: echo ::set-output name=TAG_NAME::$(echo $GITHUB_REF | cut -d / -f 3)
-    - name: Update version in setup.py
-      run: >-
-        sed -i "s/{{VERSION_PLACEHOLDER}}/${{ steps.tag.outputs.TAG_NAME }}/g" setup.py
-    - name: Build a binary wheel
-      run: >-
-        python setup.py sdist bdist_wheel
-    - name: Publish distribution 📦 to PyPI
-      uses: pypa/gh-action-pypi-publish@master
-      with:
-        password: ${{ secrets.PYPI_API_TOKEN }}
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Check that the release tag matches the package version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          python -c "import os, pywebscrapr; tag = os.environ['TAG_NAME']; version = pywebscrapr.__version__; assert tag == version, 'tag %s does not match __version__ %s' % (tag, version); print('Releasing', version)"
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install build
+          python -m build
+      - name: Publish distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
