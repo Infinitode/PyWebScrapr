@@ -181,6 +181,43 @@ import logging
 logging.basicConfig(level=logging.INFO)  # logger name: 'pywebscrapr'
 ```
 
+### Text scraping modes and output formats
+
+`scrape_text(..., elements_to_scrape=...)` accepts four modes:
+
+| Mode | What it returns |
+|---|---|
+| `'text'` (default) | Visible text, one line per block-level element. Inline markup is joined correctly (`Hello <b>world</b>` gives `Hello world`). `<br>` gives a line break. `<head>`, `<title>`, `<script>`, `<style>`, `<noscript>`, `<template>` and comments are excluded. |
+| `'content'` | The `content` attribute of `<meta>` tags. |
+| `'unseen'` | `<meta>` `content` values and `<script>` text. |
+| `'links'` | Absolute `http`/`https` URLs from `<a href>`, `<img src>`, `<video src>`, `<audio src>` and `<source src>`. |
+
+Output files:
+- **Plain text** (`output_file`, default `output.txt`; pass `None` to skip): pages separated by a blank line.
+- **CSV** (`csv_output_file`): columns `URL` and `Content`. Cells that start with `=`, `+`, `-`, `@`, tab or carriage return get a leading apostrophe, so spreadsheet programs do not run them as formulas.
+- **JSON** (`json_output_file`): a list of `{"URL": ..., "Content": ...}` objects.
+
+The `URL` in CSV and JSON output is the final address after redirects. Pages are written in discovery order, so output is the same however many `max_workers` you use. Only pages with content appear in CSV and JSON.
+
+### Upgrading from 0.1.7
+
+1. Install Python 3.9 or later. Earlier versions of the package declared 3.6+, but 0.1.8 requires 3.9+.
+2. Expect skipped pages and images in the logs instead of exceptions. Add `logging.basicConfig(level=logging.INFO)` to see downloads as well as skips.
+3. Review `max_links_to_follow`. It now counts child links only, and `0` means no child links.
+4. Review `rate_limit`. It is now the minimum spacing between requests across all threads, so the effective rate can be lower than before.
+5. Pass `user_agent=None` if you need the old User-Agent header.
+6. Only pass `timeout=None`, `max_page_bytes=None` or `max_image_bytes=None` if you accept the risk of unbounded waits or downloads.
+
+### Known limitations
+
+- `robots.txt` is not checked. Make sure your use of a site follows its terms and policies.
+- There are no retries or backoff. A failed request is skipped and logged.
+- Lazy-loaded images (`data-src`, `srcset`) are not followed. Only `src` is used.
+- SVG images are skipped, because Pillow cannot open them.
+- JavaScript is not run. Only the HTML the server returns is parsed.
+- Output is held in memory until the crawl finishes, and the output files are written at the end.
+- `block_private_addresses` checks addresses before connecting, so it does not protect against DNS rebinding. For untrusted input, also restrict network egress.
+
 ## Contributing
 
 Contributions are welcome! If you encounter any issues, have suggestions, or want to contribute to PyWebScrapr, please open an issue or submit a pull request on [GitHub](https://github.com/infinitode/pywebscrapr).
